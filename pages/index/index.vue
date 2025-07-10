@@ -1,91 +1,38 @@
 <template>
     <view class="container">
-      <button @click="startBluetooth">开启蓝牙</button>
-      <button @click="startScan" :disabled="isScanning">开始扫描</button>
-      <button @click="stopScan" :disabled="!isScanning">停止扫描</button>
+        <button @click="startScan" :disabled="isScanning">开始扫描</button>
+        <button @click="stopScan" :disabled="!isScanning">停止扫描</button>
   
-      <!-- 统一设备列表 -->
-      <view
-        v-for="device in sortedDevices"
-        :key="device.deviceId"
-        class="device-item"
-      >
+        <!-- 统一设备列表 -->
+        <view v-for="device in sortedDevices" :key="device.deviceId" class="device-item">
         <view class="device-header">
           <text>{{ device.name || '未知设备' }}</text>
           <text class="rssi">RSSI: {{ device.RSSI }}</text>
         </view>
+
         <view class="adv">
           广播包: {{ device.advertisDataHex || '无' }}
         </view>
-        <button
-          v-if="connectedDeviceId === device.deviceId"
-          @click="disconnectDevice"
-        >
+        
+        <button v-if="connectedDeviceId === device.deviceId" @click="disconnectDevice">
           断开连接
         </button>
-        <button
-          v-else
-          @click="connectDevice(device.deviceId)"
-        >
+
+        <button v-else @click="connectDevice(device.deviceId)">
           连接
         </button>
-  
-        <!-- 特征值列表 -->
-        <view
-          v-if="connectedDeviceId === device.deviceId && characteristics.length"
-        >
-          <view
-            v-for="(item, index) in characteristics"
-            :key="index"
-            class="char-item"
-          >
-            <view class="char-header">
-              <text>Service: {{ item.serviceId.slice(0, 8) }}</text>
-              <text>Characteristic: {{ item.characteristicId.slice(0, 8) }}</text>
-              <text>[{{ getPropsText(item.properties) }}]</text>
-            </view>
-  
-            <input
-              v-model="item.inputValue"
-              placeholder="输入内容"
-              class="char-input"
-            />
-  
-            <view class="btn-group">
-              <button
-                v-if="item.properties.read"
-                @click="readCharacteristic(item)"
-              >
-                读取
-              </button>
-              <button
-                v-if="item.properties.write"
-                @click="writeCharacteristic(item)"
-              >
-                写入
-              </button>
-            </view>
-  
-            <view v-if="item.readValue" class="char-value">
-              <text>读取值 (ASCII): {{ item.readValue }}</text>
-              <text>读取值 (Hex): {{ item.readHexValue }}</text>
-            </view>
-          </view>
-        </view>
+
       </view>
     </view>
-  </template>
+</template>
   
   
-  <script setup>
-  import { ref, computed, onUnmounted } from 'vue'
+<script setup>
+import { ref, computed, onUnmounted } from 'vue'
 
 const devices = ref([])
 const isScanning = ref(false)
 const connectedDeviceId = ref(null)
-const characteristics = ref([])
-
-let notifyListenerAdded = false
 
 const sortedDevices = computed(() => {
   if (!connectedDeviceId.value) return devices.value
@@ -115,9 +62,9 @@ const startScan = () => {
   if (isScanning.value) return
   devices.value = []
   isScanning.value = true
-
+  startBluetooth();
   uni.startBluetoothDevicesDiscovery({
-    allowDuplicatesKey: false,
+    allowDuplicatesKey: true,
     success() {
       console.log('开始扫描')
       uni.showToast({ title: '开始扫描', icon: 'none' })
@@ -169,104 +116,6 @@ const connectDevice = (deviceId) => {
   })
 }
 
-const getServicesAndCharacteristics = (deviceId) => {
-  uni.getBLEDeviceServices({
-    deviceId,
-    success(res) {
-      res.services.forEach((service) => {
-        uni.getBLEDeviceCharacteristics({
-          deviceId,
-          serviceId: service.uuid,
-          success(res2) {
-            res2.characteristics.forEach((char) => {
-              if (
-                char.properties.read ||
-                char.properties.write ||
-                char.properties.notify
-              ) {
-                characteristics.value.push({
-                  serviceId: service.uuid,
-                  characteristicId: char.uuid,
-                  properties: char.properties,
-                  inputValue: '',
-                  readValue: '',
-                  readHexValue: ''
-                })
-              }
-            })
-          }
-        })
-      })
-    }
-  })
-}
-
-const writeCharacteristic = (item) => {
-  if (!item.inputValue) {
-    return uni.showToast({ title: '请输入内容', icon: 'none' })
-  }
-  const buffer = new TextEncoder().encode(item.inputValue).buffer
-
-  uni.writeBLECharacteristicValue({
-    deviceId: connectedDeviceId.value,
-    serviceId: item.serviceId,
-    characteristicId: item.characteristicId,
-    value: buffer,
-    success() {
-      uni.showToast({ title: '写入成功' })
-    },
-    fail(err) {
-      console.error('写入失败', err)
-      uni.showToast({ title: '写入失败', icon: 'none' })
-    }
-  })
-}
-
-const readCharacteristic = (item) => {
-  if (!notifyListenerAdded) {
-    uni.onBLECharacteristicValueChange((res) => {
-      const charItem = characteristics.value.find(
-        (c) =>
-          c.characteristicId === res.characteristicId &&
-          c.serviceId === res.serviceId
-      )
-      if (charItem) {
-        charItem.readValue = new TextDecoder().decode(res.value)
-        charItem.readHexValue = arrayBufferToHex(res.value)
-        console.log('接收到数据:', charItem.readValue, charItem.readHexValue)
-      }
-    })
-    notifyListenerAdded = true
-  }
-
-  uni.notifyBLECharacteristicValueChange({
-    deviceId: connectedDeviceId.value,
-    serviceId: item.serviceId,
-    characteristicId: item.characteristicId,
-    state: true,
-    success() {
-      console.log('开启通知成功')
-    },
-    fail(err) {
-      console.error('开启通知失败', err)
-      uni.showToast({ title: 'notify失败', icon: 'none' })
-    }
-  })
-
-  uni.readBLECharacteristicValue({
-    deviceId: connectedDeviceId.value,
-    serviceId: item.serviceId,
-    characteristicId: item.characteristicId,
-    success() {
-      console.log('发起读取')
-    },
-    fail(err) {
-      console.error('读取失败', err)
-      uni.showToast({ title: '读取失败', icon: 'none' })
-    }
-  })
-}
-
 const disconnectDevice = () => {
   uni.closeBLEConnection({
     deviceId: connectedDeviceId.value,
@@ -293,24 +142,9 @@ function arrayBufferToHex(buffer) {
     .join(' ')
 }
 
-const getPropsText = (props) => {
-  const arr = []
-  if (props.read) arr.push('可读')
-  if (props.write) arr.push('可写')
-  if (props.notify) arr.push('通知')
-  return arr.join('/')
-}
-
-onUnmounted(() => {
-  stopScan()
-  if (connectedDeviceId.value) {
-    disconnectDevice()
-  }
-  uni.closeBluetoothAdapter()
-})
-  </script>
+</script>
   
-  <style>
+<style>
   .container {
     padding: 20rpx;
   }
@@ -379,5 +213,5 @@ onUnmounted(() => {
     color: #333;
     font-size: 26rpx;
   }
-  </style>
+</style>
   
