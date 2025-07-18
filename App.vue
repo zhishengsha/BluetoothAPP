@@ -10,10 +10,10 @@
   </view>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref } from 'vue'
-import ScanPage from './components/ScanPage.vue'
-import DevicePage from './components/DevicePage.vue'
+import ScanPage from './src/components/ScanPage.vue'
+import DevicePage from './src/components/DevicePage.vue'
 
 const activeTab = ref(0)
 const connectedDevice = ref(null)

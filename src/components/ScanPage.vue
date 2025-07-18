@@ -33,17 +33,25 @@
   </view>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, computed, onUnmounted } from 'vue'
 
-const emit = defineEmits(['device-connected'])
+interface BLEDevice {
+  deviceId: string
+  name?: string
+  RSSI: number
+  [key: string]: any
+}
 
-const devices = ref([])
-const filterText = ref('')
-const isScanning = ref(false)
-const connectedDeviceId = ref(null)
+const emit = defineEmits<{
+  (e: 'device-connected', device: BLEDevice): void
+}>()
 
-// 过滤 + 排序
+const devices = ref<BLEDevice[]>([])
+const filterText = ref<string>('')
+const isScanning = ref<boolean>(false)
+const connectedDeviceId = ref<string | null>(null)
+
 const filteredAndSortedDevices = computed(() => {
   const keyword = filterText.value.toLowerCase()
   return devices.value
@@ -56,8 +64,7 @@ const filteredAndSortedDevices = computed(() => {
     .sort((a, b) => b.RSSI - a.RSSI)
 })
 
-
-function startScan() {
+function startScan(): void {
   devices.value = []
   isScanning.value = true
 
@@ -66,8 +73,8 @@ function startScan() {
       uni.startBluetoothDevicesDiscovery({
         allowDuplicatesKey: true,
         success() {
-          uni.onBluetoothDeviceFound(res => {
-            res.devices.forEach(device => {
+          uni.onBluetoothDeviceFound((res: any) => {
+            res.devices.forEach((device: BLEDevice) => {
               if (!device.name) return
               const index = devices.value.findIndex(d => d.deviceId === device.deviceId)
               if (index !== -1) {
@@ -94,11 +101,9 @@ function startScan() {
   })
 }
 
-// 切换连接状态
-function toggleConnection(device) {
+function toggleConnection(device: BLEDevice): void {
   const id = device.deviceId
   if (connectedDeviceId.value === id) {
-    // 已连接 → 断开
     uni.closeBLEConnection({
       deviceId: id,
       success() {
@@ -110,7 +115,6 @@ function toggleConnection(device) {
       }
     })
   } else {
-    // 连接新设备
     uni.createBLEConnection({
       deviceId: id,
       success() {
@@ -129,6 +133,7 @@ onUnmounted(() => {
   uni.stopBluetoothDevicesDiscovery()
 })
 </script>
+
 
 <style scoped>
 .scan-page {

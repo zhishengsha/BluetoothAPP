@@ -1,0 +1,17 @@
+{
+  "dependencies": {
+    "mitt": "^3.0.1",
+    "pinia": "^3.0.2",
+    "vue": "^3.5.13"
+  },
+  "devDependencies": {
+    "@dcloudio/types": "^3.4.16",
+    "@vitejs/plugin-vue": "^5.2.1",
+    "@vue/tsconfig": "^0.7.0",
+    "license-checker": "^25.0.1",
+    "typescript": "~5.6.2",
+    "vite": "^6.0.5",
+    "vite-plugin-vue-setup-extend": "^0.4.0",
+    "vue-tsc": "^2.2.0"
+  }
+}

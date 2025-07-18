@@ -57,41 +57,79 @@
       <text>请先连接设备。</text>
     </view>
 
-      <!-- ✅ 写入输入弹窗 -->
-  <view v-if="writeDialog.visible" class="write-dialog">
-    <view class="dialog-box">
-      <text class="dialog-title">写入特征值</text>
-      <input v-model="writeDialog.input" placeholder="输入 16 进制，如：01 ff ab" class="dialog-input" />
+    <!-- 写入输入弹窗 -->
+    <view v-if="writeDialog.visible" class="write-dialog">
+      <view class="dialog-box">
+        <text class="dialog-title">写入特征值</text>
+        <input
+          v-model="writeDialog.input"
+          placeholder="输入 16 进制，如：01 ff ab"
+          class="dialog-input"
+        />
 
-      <view class="dialog-buttons">
-        <view class="dialog-btn cancel" @click="closeWriteDialog">取消</view>
-        <view class="dialog-btn confirm" @click="confirmWrite">写入</view>
+        <view class="dialog-buttons">
+          <view class="dialog-btn cancel" @click="closeWriteDialog">取消</view>
+          <view class="dialog-btn confirm" @click="confirmWrite">写入</view>
+        </view>
       </view>
     </view>
   </view>
-  
-  </view>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, watch } from 'vue'
 
-const props = defineProps({ device: Object })
-const services = ref([])
-const characteristics = ref({})
-const expandedService = ref(null)
+interface Device {
+  deviceId: string
+  name?: string
+}
 
-watch(() => props.device, newDev => {
-  if (newDev) refreshServices()
-})
+interface BLEService {
+  uuid: string
+  isPrimary?: boolean
+}
+
+interface BLECharacteristic {
+  uuid: string
+  properties: {
+    read?: boolean
+    write?: boolean
+    writeWithoutResponse?: boolean
+    notify?: boolean
+    indicate?: boolean
+  }
+  value: string | null
+}
+
+const props = defineProps<{ device: Device | null }>()
+
+const services = ref<BLEService[]>([])
+const characteristics = ref<Record<string, BLECharacteristic[]>>({})
+const expandedService = ref<string | null>(null)
+
+watch(
+  () => props.device,
+  (newDev) => {
+    if (newDev) {
+      refreshServices()
+    } else {
+      services.value = []
+      characteristics.value = {}
+      expandedService.value = null
+    }
+  }
+)
 
 function refreshServices() {
+  if (!props.device) return
+
   uni.getBLEDeviceServices({
     deviceId: props.device.deviceId,
     success(res) {
-      services.value = res.services
+      services.value = res.services || []
       characteristics.value = {}
-      res.services.forEach(svc => {
+
+      res.services.forEach((svc: BLEService) => {
         loadCharacteristics(svc.uuid)
       })
     },
@@ -101,33 +139,43 @@ function refreshServices() {
   })
 }
 
-function loadCharacteristics(serviceUUID) {
+function loadCharacteristics(serviceUUID: string) {
+  if (!props.device) return
+
   uni.getBLEDeviceCharacteristics({
     deviceId: props.device.deviceId,
     serviceId: serviceUUID,
     success(res) {
-      characteristics.value[serviceUUID] = res.characteristics.map(c => ({
-        ...c,
-        value: null
-      }))
+      const chars: BLECharacteristic[] = (res.characteristics || []).map(
+        (c: any) => ({
+          ...c,
+          value: null
+        })
+      )
+      characteristics.value[serviceUUID] = chars
+    },
+    fail(err) {
+      console.error('获取特征值失败', err)
     }
   })
 }
 
-function expandService(uuid) {
+function expandService(uuid: string) {
   expandedService.value = expandedService.value === uuid ? null : uuid
 }
 
-function readChar(svcUUID, charUUID) {
+function readChar(svcUUID: string, charUUID: string) {
+  if (!props.device) return
+
   uni.readBLECharacteristicValue({
     deviceId: props.device.deviceId,
     serviceId: svcUUID,
     characteristicId: charUUID,
     success() {
-      uni.onBLECharacteristicValueChange(res => {
+      uni.onBLECharacteristicValueChange((res) => {
         if (res.characteristicId === charUUID) {
           const arr = Array.from(new Uint8Array(res.value))
-          const hex = arr.map(b => b.toString(16).padStart(2, '0')).join(' ')
+          const hex = arr.map((b) => b.toString(16).padStart(2, '0')).join(' ')
           updateCharValue(svcUUID, charUUID, hex)
         }
       })
@@ -138,42 +186,19 @@ function readChar(svcUUID, charUUID) {
   })
 }
 
-// function writeCharPrompt(svcUUID, charUUID) {
-//   const input = prompt('输入要写入的16进制值（如 "01 ff ab"）:')
-//   if (!input) return
-//   const bytes = new Uint8Array(
-//     input.trim().split(/\s+/).map(v => parseInt(v,16))
-//   )
-//   uni.writeBLECharacteristicValue({
-//     deviceId: props.device.deviceId,
-//     serviceId: svcUUID,
-//     characteristicId: charUUID,
-//     value: bytes.buffer,
-//     success() {
-//       console.log('写入成功')
-//       updateCharValue(svcUUID, charUUID, input)
-//     },
-//     fail(err) {
-//       console.error('写入失败', err)
-//     }
-//   })
-// }
-
-function updateCharValue(svcUUID, charUUID, value) {
-  const arr = characteristics.value[svcUUID]
-  const idx = arr.findIndex(c => c.uuid === charUUID)
-  if (idx !== -1) arr[idx].value = value
-}
-
-// 控制写入输入弹窗
-const writeDialog = ref({
+const writeDialog = ref<{
+  visible: boolean
+  serviceUUID: string
+  charUUID: string
+  input: string
+}>({
   visible: false,
   serviceUUID: '',
   charUUID: '',
   input: ''
 })
 
-function writeCharPrompt(serviceUUID, charUUID) {
+function writeCharPrompt(serviceUUID: string, charUUID: string) {
   writeDialog.value = {
     visible: true,
     serviceUUID,
@@ -188,10 +213,10 @@ function closeWriteDialog() {
 
 function confirmWrite() {
   const input = writeDialog.value.input.trim()
-  if (!input) return
+  if (!input || !props.device) return
 
   const bytes = new Uint8Array(
-    input.split(/\s+/).map(v => parseInt(v, 16))
+    input.split(/\s+/).map((v) => parseInt(v, 16))
   )
 
   uni.writeBLECharacteristicValue({
@@ -211,9 +236,17 @@ function confirmWrite() {
     }
   })
 }
+
+function updateCharValue(svcUUID: string, charUUID: string, value: string) {
+  const arr = characteristics.value[svcUUID]
+  if (!arr) return
+  const idx = arr.findIndex((c) => c.uuid === charUUID)
+  if (idx !== -1) arr[idx].value = value
+}
 </script>
 
 <style scoped>
+/* 样式保持不变，直接复制你提供的 */
 .device-page {
   padding: 16px;
 }
