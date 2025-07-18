@@ -105,8 +105,6 @@ const connectDevice = (deviceId) => {
     deviceId,
     success() {
       connectedDeviceId.value = deviceId
-      characteristics.value = []
-      getServicesAndCharacteristics(deviceId)
       uni.showToast({ title: '连接成功', icon: 'none' })
     },
     fail(err) {
